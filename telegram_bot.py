@@ -49,17 +49,20 @@ def handle_new_question_request(update, context, redis_db, quiz_questions_answer
             reply_markup=REPLY_MARKUP
         )
         return ConversationState.CHOOSING
-    question_text = random.choice(list(quiz_questions_answers.keys()))
-    update.message.reply_text(question_text)
+    question = random.choice(list(quiz_questions_answers.keys()))
+    update.message.reply_text(
+        question,
+        reply_markup=REPLY_MARKUP
+    )
     user_id = update.effective_user.id
-    redis_db.set(user_id, question_text)
+    redis_db.set(user_id, question)
     return ConversationState.ANSWERING
 
 
 def handle_solution_attempt(update, context, redis_db, quiz_questions_answers):
     user_answer = update.message.text
     user_id = update.effective_user.id
-    asked_question = redis_db.get(user_id).decode("utf-8")
+    asked_question = redis_db.get(user_id).decode('utf-8')
     full_answer = quiz_questions_answers[asked_question]
     short_answer = full_answer.split('.')[0].split('(')[0].strip().lower()
     if user_answer.strip().lower() == short_answer:
@@ -72,7 +75,7 @@ def handle_solution_attempt(update, context, redis_db, quiz_questions_answers):
         return ConversationState.ANSWERING
 
 
-def handle_give_up(update, context, redis_db, quiz_questions_answers):
+def handle_show_answer(update, context, redis_db, quiz_questions_answers):
     if update.message.text == 'Новый вопрос':
         update.message.reply_text(
             'Даже не посмотрите на правильный ответ? )',
@@ -111,7 +114,7 @@ def main():
             ],
             ConversationState.ANSWERING: [
                 RegexHandler('^(Новый вопрос|Показать ответ)$', partial(
-                    handle_give_up,
+                    handle_show_answer,
                     redis_db=redis_db,
                     quiz_questions_answers=quiz_questions_answers)
                 ),
