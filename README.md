@@ -10,6 +10,7 @@ Bot works with [Telegram](https://telegram.org/) and [vk.com](https://vk.com/).
 - Send a message to [@UserInfoBot](https://t.me/userinfobot) to get your chat_id, assign it to `TG_LOGS_CHAT_ID` variable to receive log messages.
 - Get your VK group API key from group's settings page and assign it to `VK_GROUP_API_KEY` variable.
 - Set up a [Redis](https://redis.com/) account. After that, create a database, its host, port and password parameters can be found in configuration tab. Assign these values to `REDIS_DB_HOST`, `REDIS_DB_PORT`, `REDIS_DB_PASSWORD` variables respectively.
+- Download archive with quiz questions and answers from [here](https://dvmn.org/media/modules_dist/quiz-questions.zip) for demonstration purposes. Your own files should also follow the same format, unless you change the loading script.
 
 Example of an `.env` file:
 ```
