@@ -8,7 +8,7 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.utils import get_random_id
 
-from load_quiz import load_quiz_from_file
+from load_quiz import load_quizzes_from_directory
 
 
 def create_keyboard():
@@ -99,12 +99,12 @@ def main():
     redis_db_password = os.environ['REDIS_DB_PASSWORD']
     redis_db_port = os.environ['REDIS_DB_PORT']
     redis_db_host = os.environ['REDIS_DB_HOST']
-    quiz_file_path = os.environ['QUIZ_FILE_PATH']
+    quizzes_directory_path = os.environ['QUIZZES_DIRECTORY_PATH']
     redis_db = redis.Redis(
         host=redis_db_host, port=redis_db_port,
         password=redis_db_password
     )
-    quiz_questions_answers = load_quiz_from_file(quiz_file_path)
+    quiz_questions_answers = load_quizzes_from_directory(quizzes_directory_path)
     keyboard = create_keyboard()
     process_commands(vk_token, quiz_questions_answers, keyboard, redis_db)
 

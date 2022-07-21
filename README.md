@@ -20,7 +20,7 @@ VK_GROUP_API_KEY='VK group api key'
 REDIS_DB_HOST='Redis database host'
 REDIS_DB_PORT='Redis database port'
 REDIS_DB_PASSWORD='Redis database password'
-QUIZ_FILE_PATH='Path to your file with quiz questions ans answers'
+QUIZZES_DIRECTORY_PATH='Path to your directory with quiz files'
 ```
 
 Python3 should already be installed. Use pip (or pip3, in case of conflict with Python2) to install dependencies:
