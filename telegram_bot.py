@@ -1,5 +1,5 @@
 import os
-import random
+import json
 from enum import Enum
 from functools import partial
 
@@ -13,7 +13,7 @@ from telegram.ext import (Updater,
                           Filters,
                           RegexHandler)
 
-from load_quiz import load_quizzes_from_directory
+from load_quiz import load_quizzes_from_directory_to_redis
 
 
 class ConversationState(Enum):
@@ -42,28 +42,44 @@ def cancel(update, context):
     return ConversationHandler.END
 
 
-def handle_new_question_request(update, context, redis_db, quiz_questions_answers):
+def handle_new_question_request(update, context, redis_db):
     if update.message.text == 'Показать ответ':
         update.message.reply_text(
             'Вы еще не начали викторину.',
             reply_markup=REPLY_MARKUP
         )
         return ConversationState.CHOOSING
-    question = random.choice(list(quiz_questions_answers.keys()))
+    question = redis_db.hrandfield('questions').decode('utf-8')
+    question_text = json.loads(
+        redis_db.hget(
+            'questions',
+            question
+        ).decode('utf-8'))['question']
     update.message.reply_text(
-        question,
+        question_text,
         reply_markup=REPLY_MARKUP
     )
     user_id = update.effective_user.id
-    redis_db.set(user_id, question)
+    redis_db.hset(
+        'asked_questions',
+        key=f'user_tg_{user_id}',
+        value=question
+    )
     return ConversationState.ANSWERING
 
 
-def handle_solution_attempt(update, context, redis_db, quiz_questions_answers):
+def handle_solution_attempt(update, context, redis_db):
     user_answer = update.message.text
     user_id = update.effective_user.id
-    asked_question = redis_db.get(user_id).decode('utf-8')
-    full_answer = quiz_questions_answers[asked_question]
+    asked_question = redis_db.hget(
+        'asked_questions',
+        f'user_tg_{user_id}'
+    ).decode('utf-8')
+    full_answer = json.loads(
+        redis_db.hget(
+            'questions',
+            asked_question
+        ).decode('utf-8'))['answer']
     short_answer = full_answer.split('.')[0].split('(')[0].strip().lower()
     if user_answer.strip().lower() == short_answer:
         message_text = 'Верно! Для следующего вопроса нажмите "Новый вопрос".'
@@ -75,15 +91,23 @@ def handle_solution_attempt(update, context, redis_db, quiz_questions_answers):
         return ConversationState.ANSWERING
 
 
-def handle_show_answer(update, context, redis_db, quiz_questions_answers):
+def handle_show_answer(update, context, redis_db):
     if update.message.text == 'Новый вопрос':
         update.message.reply_text(
             'Даже не посмотрите на правильный ответ? )',
             reply_markup=REPLY_MARKUP
         )
         return ConversationState.ANSWERING
-    asked_question = redis_db.get(update.message.chat_id).decode('utf-8')
-    answer = quiz_questions_answers[asked_question].split('.')[0]
+    user_id = update.effective_user.id
+    asked_question = redis_db.hget(
+        'asked_questions',
+        f'user_tg_{user_id}'
+    ).decode('utf-8')
+    answer = json.loads(
+        redis_db.hget(
+            'questions',
+            asked_question
+        ).decode('utf-8'))['answer'].split('.')[0]
     update.message.reply_text(answer, reply_markup=REPLY_MARKUP)
     return ConversationState.CHOOSING
 
@@ -99,29 +123,35 @@ def main():
         host=redis_db_host, port=redis_db_port,
         password=redis_db_password
     )
-    quiz_questions_answers = load_quizzes_from_directory(quizzes_directory_path)
+    load_quizzes_from_directory_to_redis(quizzes_directory_path)
     updater = Updater(tg_bot_token)
     dispatcher = updater.dispatcher
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
             ConversationState.CHOOSING: [
-                RegexHandler('^(Новый вопрос|Показать ответ)$', partial(
-                    handle_new_question_request,
-                    redis_db=redis_db,
-                    quiz_questions_answers=quiz_questions_answers)
+                RegexHandler(
+                    '^(Новый вопрос|Показать ответ)$',
+                    partial(
+                        handle_new_question_request,
+                        redis_db=redis_db
+                    )
                 )
             ],
             ConversationState.ANSWERING: [
-                RegexHandler('^(Новый вопрос|Показать ответ)$', partial(
-                    handle_show_answer,
-                    redis_db=redis_db,
-                    quiz_questions_answers=quiz_questions_answers)
+                RegexHandler(
+                    '^(Новый вопрос|Показать ответ)$',
+                    partial(
+                        handle_show_answer,
+                        redis_db=redis_db
+                    )
                 ),
-                MessageHandler(Filters.text, partial(
-                    handle_solution_attempt,
-                    redis_db=redis_db,
-                    quiz_questions_answers=quiz_questions_answers)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        handle_solution_attempt,
+                        redis_db=redis_db
+                    )
                 )
             ]
         },
