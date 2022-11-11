@@ -34,11 +34,14 @@ def start(update, context):
     return ConversationState.CHOOSING
 
 
-def cancel(update, context):
+def cancel(update, context, redis_db):
     update.message.reply_text(
         'Завершение работы викторины.',
         reply_markup=ReplyKeyboardRemove()
     )
+    user_id = update.effective_user.id
+    redis_db.hdel('user_total_questions', f'user_tg_{user_id}')
+    redis_db.hdel('user_correct_answers', f'user_tg_{user_id}')
     return ConversationHandler.END
 
 
@@ -61,10 +64,12 @@ def handle_new_question_request(update, context, redis_db):
     )
     user_id = update.effective_user.id
     redis_db.hset(
-        'asked_questions',
-        key=f'user_tg_{user_id}',
-        value=question
+        'user_asked_question',
+        f'user_tg_{user_id}',
+        question
     )
+    redis_db.hincrby('user_total_questions', f'user_tg_{user_id}', 1)
+    redis_db.hset('user_correct_answers', f'user_tg_{user_id}', 0)
     return ConversationState.ANSWERING
 
 
@@ -72,7 +77,7 @@ def handle_solution_attempt(update, context, redis_db):
     user_answer = update.message.text
     user_id = update.effective_user.id
     asked_question = redis_db.hget(
-        'asked_questions',
+        'user_asked_question',
         f'user_tg_{user_id}'
     ).decode('utf-8')
     full_answer = json.loads(
@@ -84,6 +89,7 @@ def handle_solution_attempt(update, context, redis_db):
     if user_answer.strip().lower() == short_answer:
         message_text = 'Верно! Для следующего вопроса нажмите "Новый вопрос".'
         update.message.reply_text(message_text, reply_markup=REPLY_MARKUP)
+        redis_db.hincrby('user_correct_answers', f'user_tg_{user_id}', 1)
         return ConversationState.CHOOSING
     else:
         message_text = 'Неверно, попробуйте ещё раз.'
@@ -100,7 +106,7 @@ def handle_show_answer(update, context, redis_db):
         return ConversationState.ANSWERING
     user_id = update.effective_user.id
     asked_question = redis_db.hget(
-        'asked_questions',
+        'user_asked_question',
         f'user_tg_{user_id}'
     ).decode('utf-8')
     answer = json.loads(
@@ -109,6 +115,22 @@ def handle_show_answer(update, context, redis_db):
             asked_question
         ).decode('utf-8'))['answer'].split('.')[0]
     update.message.reply_text(answer, reply_markup=REPLY_MARKUP)
+    return ConversationState.CHOOSING
+
+
+def handle_score_request(update, context, redis_db):
+    user_id = update.effective_user.id
+    user_total_questions = redis_db.hget(
+        'user_total_questions',
+        f'user_tg_{user_id}'
+    ).decode('utf-8')
+    user_correct_answers = redis_db.hget(
+        'user_correct_answers',
+        f'user_tg_{user_id}'
+    ).decode('utf-8')
+    message_text = f'Вопросов задано: {user_total_questions}\n'\
+                   f'Правильных ответов: {user_correct_answers}'
+    update.message.reply_text(message_text, reply_markup=REPLY_MARKUP)
     return ConversationState.CHOOSING
 
 
@@ -136,6 +158,13 @@ def main():
                         handle_new_question_request,
                         redis_db=redis_db
                     )
+                ),
+                RegexHandler(
+                    '^(Мой счет)$',
+                    partial(
+                        handle_score_request,
+                        redis_db=redis_db
+                    )
                 )
             ],
             ConversationState.ANSWERING: [
@@ -143,6 +172,13 @@ def main():
                     '^(Новый вопрос|Показать ответ)$',
                     partial(
                         handle_show_answer,
+                        redis_db=redis_db
+                    )
+                ),
+                RegexHandler(
+                    '^(Мой счет)$',
+                    partial(
+                        handle_score_request,
                         redis_db=redis_db
                     )
                 ),
@@ -155,7 +191,7 @@ def main():
                 )
             ]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', partial(cancel, redis_db=redis_db))]
     )
     dispatcher.add_handler(conversation_handler)
     updater.start_polling()
